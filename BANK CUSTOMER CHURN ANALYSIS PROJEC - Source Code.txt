@@ -1,0 +1,623 @@
+BANK CUSTOMER CHURN ANALYSIS PROJECT
+SOURCE CODE REFERENCE
+============================================================
+
+SECTION 1: SQL QUERIES (MySQL)
+============================================================
+
+Purpose: Database operations, data validation, joins, and data analysis.
+
+------------------------------------------------------------
+SQL 1. CREATE ANALYSIS VIEW
+------------------------------------------------------------
+
+CREATE OR REPLACE VIEW Bank_Churn_Analysis AS
+SELECT
+    c.CustomerId,
+    c.Surname,
+    c.CreditScore,
+    c.Geography,
+    c.Gender,
+    c.Age,
+    c.Tenure AS CustomerTenure,
+    c.EstimatedSalary,
+    a.Balance,
+    a.NumOfProducts,
+    a.HasCrCard,
+    a.IsActiveMember,
+    a.Exited,
+    CASE
+        WHEN c.Age < 30 THEN 'Under 30'
+        WHEN c.Age < 40 THEN '30-39'
+        WHEN c.Age < 50 THEN '40-49'
+        ELSE '50+'
+    END AS Age_Group,
+    CASE
+        WHEN c.EstimatedSalary < 50000 THEN 'Low'
+        WHEN c.EstimatedSalary < 100000 THEN 'Medium'
+        ELSE 'High'
+    END AS Salary_Group,
+    CASE
+        WHEN c.CreditScore < 580 THEN 'Low'
+        WHEN c.CreditScore < 670 THEN 'Medium'
+        ELSE 'High'
+    END AS CreditScore_Group,
+    CASE
+        WHEN a.Balance IS NULL THEN 'Unknown'
+        WHEN a.Balance = 0 THEN 'Zero'
+        WHEN a.Balance < 50000 THEN 'Low'
+        WHEN a.Balance < 150000 THEN 'Medium'
+        ELSE 'High'
+    END AS Balance_Group,
+    CASE
+        WHEN c.Tenure <= 2 THEN '0-2 Years'
+        WHEN c.Tenure <= 5 THEN '3-5 Years'
+        ELSE '6-10 Years'
+    END AS Tenure_Group,
+    CASE
+        WHEN UPPER(TRIM(a.IsActiveMember)) IN ('YES', '1', 'TRUE')
+            THEN 'Active'
+        WHEN UPPER(TRIM(a.IsActiveMember)) IN ('NO', '0', 'FALSE')
+            THEN 'Inactive'
+        ELSE 'Unknown'
+    END AS Activity_Status,
+    CASE
+        WHEN UPPER(TRIM(a.HasCrCard)) IN ('YES', '1', 'TRUE')
+            THEN 'Has Card'
+        WHEN UPPER(TRIM(a.HasCrCard)) IN ('NO', '0', 'FALSE')
+            THEN 'No Card'
+        ELSE 'Unknown'
+    END AS Card_Status,
+    CASE
+        WHEN a.Exited = 1 THEN 'Churner'
+        WHEN a.Exited = 0 THEN 'Non-Churner'
+        ELSE 'Unknown'
+    END AS Churn_Status,
+    CASE
+        WHEN a.NumOfProducts IS NULL THEN 'Unknown'
+        WHEN a.NumOfProducts = 1 THEN '1 Product'
+        WHEN a.NumOfProducts = 2 THEN '2 Products'
+        ELSE '3+ Products'
+    END AS Product_Group
+FROM Customer_Info c
+LEFT JOIN Account_Info a
+    ON c.CustomerId = a.CustomerId;
+
+
+NOTE: Confirm whether Tenure exists in Customer_Info. If it exists in Account_Info instead, replace c.Tenure with a.Tenure.
+
+------------------------------------------------------------
+SQL 2. COUNT CUSTOMER RECORDS
+------------------------------------------------------------
+
+SELECT COUNT(*) AS Total_Customers
+FROM Customer_Info;
+
+------------------------------------------------------------
+SQL 3. COUNT ACCOUNT RECORDS
+------------------------------------------------------------
+
+SELECT COUNT(*) AS Total_Account_Records
+FROM Account_Info;
+
+------------------------------------------------------------
+SQL 4. CHECK DUPLICATE CUSTOMER IDS
+------------------------------------------------------------
+
+SELECT CustomerId, COUNT(*) AS Record_Count
+FROM Customer_Info
+GROUP BY CustomerId
+HAVING COUNT(*) > 1;
+
+------------------------------------------------------------
+SQL 5. FIND CUSTOMERS WITHOUT MATCHING ACCOUNT RECORDS
+------------------------------------------------------------
+
+SELECT c.CustomerId
+FROM Customer_Info c
+LEFT JOIN Account_Info a
+    ON c.CustomerId = a.CustomerId
+WHERE a.CustomerId IS NULL;
+
+------------------------------------------------------------
+SQL 6. CHURN STATUS DISTRIBUTION
+------------------------------------------------------------
+
+SELECT
+    Exited,
+    COUNT(*) AS Customer_Count
+FROM Account_Info
+GROUP BY Exited;
+
+------------------------------------------------------------
+SQL 7. CHURN AND RETENTION COUNTS
+------------------------------------------------------------
+
+SELECT
+    COUNT(DISTINCT CASE
+        WHEN Exited = 1 THEN CustomerId
+    END) AS Churned_Customers,
+    COUNT(DISTINCT CASE
+        WHEN Exited = 0 THEN CustomerId
+    END) AS Non_Churned_Customers,
+    COUNT(DISTINCT CASE
+        WHEN Exited IN (0, 1) THEN CustomerId
+    END) AS Customers_With_Known_Status
+FROM Account_Info;
+
+------------------------------------------------------------
+SQL 8. CUSTOMER DISTRIBUTION BY GEOGRAPHY
+------------------------------------------------------------
+
+SELECT
+    Geography,
+    COUNT(*) AS Customer_Count
+FROM Customer_Info
+GROUP BY Geography
+ORDER BY Customer_Count DESC;
+
+------------------------------------------------------------
+SQL 9. CUSTOMER DISTRIBUTION BY GENDER
+------------------------------------------------------------
+
+SELECT
+    Gender,
+    COUNT(*) AS Customer_Count
+FROM Customer_Info
+GROUP BY Gender;
+
+------------------------------------------------------------
+SQL 10. CUSTOMER DISTRIBUTION BY PRODUCTS
+------------------------------------------------------------
+
+SELECT
+    NumOfProducts,
+    COUNT(*) AS Customer_Count
+FROM Account_Info
+GROUP BY NumOfProducts
+ORDER BY NumOfProducts;
+
+------------------------------------------------------------
+SQL 11. CHECK MISSING CUSTOMER DATA
+------------------------------------------------------------
+
+SELECT
+    SUM(CASE WHEN CustomerId IS NULL THEN 1 ELSE 0 END)
+        AS Missing_CustomerId,
+    SUM(CASE WHEN CreditScore IS NULL THEN 1 ELSE 0 END)
+        AS Missing_CreditScore,
+    SUM(CASE WHEN Age IS NULL THEN 1 ELSE 0 END)
+        AS Missing_Age,
+    SUM(CASE WHEN EstimatedSalary IS NULL THEN 1 ELSE 0 END)
+        AS Missing_EstimatedSalary
+FROM Customer_Info;
+
+
+============================================================
+SECTION 2: DAX MEASURES (Power BI)
+============================================================
+
+Purpose: Dynamic calculations used in KPI cards, charts, and matrix visuals.
+
+IMPORTANT:
+Create these using Power BI Desktop > Modeling > New measure.
+
+------------------------------------------------------------
+DAX 1. TOTAL CUSTOMERS
+------------------------------------------------------------
+
+Total Customers =
+DISTINCTCOUNT(
+    'Bank Churn Analysis refined dataset'[CustomerId]
+)
+
+------------------------------------------------------------
+DAX 2. CHURNED CUSTOMERS
+------------------------------------------------------------
+
+Churned Customers =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Exited] = 1
+)
+
+------------------------------------------------------------
+DAX 3. NON-CHURNED CUSTOMERS
+------------------------------------------------------------
+
+Non-Churned Customers =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Exited] = 0
+)
+
+------------------------------------------------------------
+DAX 4. CUSTOMERS WITH KNOWN CHURN STATUS
+------------------------------------------------------------
+
+Customers with Known Churn Status =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Exited] IN {0, 1}
+)
+
+------------------------------------------------------------
+DAX 5. CHURN RATE
+------------------------------------------------------------
+
+Churn Rate =
+DIVIDE(
+    [Churned Customers],
+    [Customers with Known Churn Status],
+    0
+)
+
+------------------------------------------------------------
+DAX 6. RETENTION RATE
+------------------------------------------------------------
+
+Retention Rate =
+DIVIDE(
+    [Non-Churned Customers],
+    [Customers with Known Churn Status],
+    0
+)
+
+------------------------------------------------------------
+DAX 7. AVERAGE CREDIT SCORE
+------------------------------------------------------------
+
+Average Credit Score =
+AVERAGE(
+    'Bank Churn Analysis refined dataset'[CreditScore]
+)
+
+------------------------------------------------------------
+DAX 8. AVERAGE CUSTOMER AGE
+------------------------------------------------------------
+
+Average Customer Age =
+AVERAGE(
+    'Bank Churn Analysis refined dataset'[Age]
+)
+
+------------------------------------------------------------
+DAX 9. AVERAGE ACCOUNT BALANCE
+------------------------------------------------------------
+
+Average Account Balance =
+AVERAGE(
+    'Bank Churn Analysis refined dataset'[Balance]
+)
+
+------------------------------------------------------------
+DAX 10. AVERAGE ESTIMATED SALARY
+------------------------------------------------------------
+
+Average Estimated Salary =
+AVERAGE(
+    'Bank Churn Analysis refined dataset'[EstimatedSalary]
+)
+
+------------------------------------------------------------
+DAX 11. ACTIVE CUSTOMERS
+------------------------------------------------------------
+
+Active Customers =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Activity Status New] = "Active"
+)
+
+------------------------------------------------------------
+DAX 12. INACTIVE CUSTOMERS
+------------------------------------------------------------
+
+Inactive Customers =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Activity Status New] = "Inactive"
+)
+
+------------------------------------------------------------
+DAX 13. CUSTOMERS WITH CREDIT CARDS
+------------------------------------------------------------
+
+Customers with Credit Cards =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Card Status New] = "Has Card"
+)
+
+------------------------------------------------------------
+DAX 14. CUSTOMERS WITHOUT CREDIT CARDS
+------------------------------------------------------------
+
+Customers without Credit Cards =
+CALCULATE(
+    DISTINCTCOUNT(
+        'Bank Churn Analysis refined dataset'[CustomerId]
+    ),
+    'Bank Churn Analysis refined dataset'[Card Status New] = "No Card"
+)
+
+------------------------------------------------------------
+DAX 15. CHURN RATE BY SEGMENT
+------------------------------------------------------------
+
+Churn Rate by Segment =
+DIVIDE(
+    [Churned Customers],
+    [Customers with Known Churn Status],
+    0
+)
+
+NOTE: Format Churn Rate, Retention Rate, and Churn Rate by Segment as Percentage.
+
+
+============================================================
+SECTION 3: DAX CALCULATED COLUMNS (Power BI)
+============================================================
+
+Purpose: Create labels and customer categories for grouping and filtering.
+
+IMPORTANT:
+Create each one using Power BI Desktop > Modeling > New column.
+Create each column separately.
+
+------------------------------------------------------------
+COLUMN 1. ACTIVITY STATUS NEW
+------------------------------------------------------------
+
+Activity Status New =
+SWITCH(
+    UPPER(
+        TRIM(
+            'Bank Churn Analysis refined dataset'[IsActiveMember] & ""
+        )
+    ),
+    "YES", "Active",
+    "NO", "Inactive",
+    "1", "Active",
+    "0", "Inactive",
+    "TRUE", "Active",
+    "FALSE", "Inactive",
+    "Unknown"
+)
+
+------------------------------------------------------------
+COLUMN 2. CARD STATUS NEW
+------------------------------------------------------------
+
+Card Status New =
+SWITCH(
+    UPPER(
+        TRIM(
+            'Bank Churn Analysis refined dataset'[HasCrCard] & ""
+        )
+    ),
+    "YES", "Has Card",
+    "NO", "No Card",
+    "1", "Has Card",
+    "0", "No Card",
+    "TRUE", "Has Card",
+    "FALSE", "No Card",
+    "Unknown"
+)
+
+------------------------------------------------------------
+COLUMN 3. CHURN LABEL
+------------------------------------------------------------
+
+Churn Label =
+SWITCH(
+    'Bank Churn Analysis refined dataset'[Exited],
+    1, "Churner",
+    0, "Non-Churner",
+    "Unknown"
+)
+
+------------------------------------------------------------
+COLUMN 4. AGE GROUP
+------------------------------------------------------------
+
+Age Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[Age]), "Unknown",
+    'Bank Churn Analysis refined dataset'[Age] < 30, "Under 30",
+    'Bank Churn Analysis refined dataset'[Age] < 40, "30-39",
+    'Bank Churn Analysis refined dataset'[Age] < 50, "40-49",
+    "50+"
+)
+
+------------------------------------------------------------
+COLUMN 5. SALARY GROUP
+------------------------------------------------------------
+
+Salary Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[EstimatedSalary]), "Unknown",
+    'Bank Churn Analysis refined dataset'[EstimatedSalary] < 50000, "Low",
+    'Bank Churn Analysis refined dataset'[EstimatedSalary] < 100000, "Medium",
+    "High"
+)
+
+------------------------------------------------------------
+COLUMN 6. CREDIT SCORE GROUP
+------------------------------------------------------------
+
+CreditScore Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[CreditScore]), "Unknown",
+    'Bank Churn Analysis refined dataset'[CreditScore] < 580, "Low",
+    'Bank Churn Analysis refined dataset'[CreditScore] < 670, "Medium",
+    "High"
+)
+
+------------------------------------------------------------
+COLUMN 7. BALANCE GROUP
+------------------------------------------------------------
+
+Balance Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[Balance]), "Unknown",
+    'Bank Churn Analysis refined dataset'[Balance] = 0, "Zero",
+    'Bank Churn Analysis refined dataset'[Balance] < 50000, "Low",
+    'Bank Churn Analysis refined dataset'[Balance] < 150000, "Medium",
+    "High"
+)
+
+------------------------------------------------------------
+COLUMN 8. TENURE GROUP
+------------------------------------------------------------
+
+Tenure Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[Tenure]), "Unknown",
+    'Bank Churn Analysis refined dataset'[Tenure] <= 2, "0-2 Years",
+    'Bank Churn Analysis refined dataset'[Tenure] <= 5, "3-5 Years",
+    "6-10 Years"
+)
+
+------------------------------------------------------------
+COLUMN 9. PRODUCT GROUP
+------------------------------------------------------------
+
+Product Group =
+SWITCH(
+    TRUE(),
+    ISBLANK('Bank Churn Analysis refined dataset'[NumOfProducts]), "Unknown",
+    'Bank Churn Analysis refined dataset'[NumOfProducts] = 1, "1 Product",
+    'Bank Churn Analysis refined dataset'[NumOfProducts] = 2, "2 Products",
+    "3+ Products"
+)
+
+
+============================================================
+SECTION 4: POWER QUERY CUSTOM COLUMN FORMULAS
+============================================================
+
+Purpose: Create numeric sort columns to control the display order of categories.
+
+IMPORTANT:
+These are NOT SQL queries or DAX.
+Open Power BI Desktop > Transform data > Add Column > Custom Column.
+Create each formula as a separate column and set its data type to Whole Number.
+
+------------------------------------------------------------
+FORMULA 1. BALANCE SORT
+------------------------------------------------------------
+
+if [Balance] = null then 5
+else if [Balance] = 0 then 1
+else if [Balance] < 50000 then 2
+else if [Balance] < 150000 then 3
+else 4
+
+------------------------------------------------------------
+FORMULA 2. SALARY SORT
+------------------------------------------------------------
+
+if [EstimatedSalary] = null then 4
+else if [EstimatedSalary] < 50000 then 1
+else if [EstimatedSalary] < 100000 then 2
+else 3
+
+------------------------------------------------------------
+FORMULA 3. CREDIT SCORE SORT
+------------------------------------------------------------
+
+if [CreditScore] = null then 4
+else if [CreditScore] < 580 then 1
+else if [CreditScore] < 670 then 2
+else 3
+
+------------------------------------------------------------
+FORMULA 4. TENURE SORT
+------------------------------------------------------------
+
+if [Tenure] = null then 4
+else if [Tenure] <= 2 then 1
+else if [Tenure] <= 5 then 2
+else 3
+
+------------------------------------------------------------
+FORMULA 5. AGE SORT
+------------------------------------------------------------
+
+if [Age] = null then 5
+else if [Age] < 30 then 1
+else if [Age] < 40 then 2
+else if [Age] < 50 then 3
+else 4
+
+------------------------------------------------------------
+FORMULA 6. PRODUCT SORT
+------------------------------------------------------------
+
+if [NumOfProducts] = null then 5
+else if [NumOfProducts] = 1 then 1
+else if [NumOfProducts] = 2 then 2
+else if [NumOfProducts] = 3 then 3
+else 4
+
+
+============================================================
+SECTION 5: OPTIONAL DAX COLOR MEASURE
+============================================================
+
+Purpose: Apply different colors to Male and Female categories in a visual.
+
+Selected Gender Color =
+SWITCH(
+    SELECTEDVALUE(
+        'Bank Churn Analysis refined dataset'[Gender]
+    ),
+    "Male", "#FF8A24",
+    "Female", "#7C3AED",
+    "#FF3B5C"
+)
+
+To apply:
+1. Select the gender visual.
+2. Open Format visual > Data colors > fx.
+3. Choose Field value.
+4. Select Selected Gender Color.
+
+
+============================================================
+SECTION 6: POWER BI SORTING MAPPING
+============================================================
+
+After creating the numeric sort columns, go to Data view.
+
+Select each text column > Column tools > Sort by column.
+
+Balance Group -> Balance Sort
+Salary Group -> Salary Sort
+CreditScore Group -> Credit Score Sort
+Tenure Group -> Tenure Sort
+Age Group -> Age Sort
+Product Group -> Product Sort
+
+
+============================================================
+END OF SOURCE CODE
+============================================================
